@@ -26,7 +26,7 @@ use ieee.std_logic_1164.all;
 entity static_uart_tx is
   generic
   (
-    SYS_CLK_MHZ : real range 0.0 to real'high; -- System Clock Frequency in MHz
+    SYS_CLK_MHZ : real range 0.0 to real'high := 125.0; -- System Clock Frequency in MHz
     -- UART Classification
     BAUD_RATE 	: integer; -- in bps (uart baud is 1 bit)
     DATA_BITS_WIDTH 	: integer range 5 to 9 := 8;
@@ -48,7 +48,39 @@ entity static_uart_tx is
   );
 end static_uart_tx;
 
+--------------------------------------------------------------------------------
+-- Package Declaration
+--------------------------------------------------------------------------------
+library ieee;
+use ieee.std_logic_1164.all;
 
+package static_uart_tx_pkg is
+  component static_uart_tx is
+    generic
+    (
+      SYS_CLK_MHZ : real range 0.0 to real'high;
+      BAUD_RATE 	: integer;
+      DATA_BITS_WIDTH 	: integer range 5 to 9;
+      PARITY_BITS_WIDTH : integer range 0 to 1;
+      PARITY_TYPE : string;
+      STOP_BITS_WIDTH   : integer range 1 to 2
+    );
+    port
+    (
+      clk 	: in std_logic;
+      reset : in std_logic;
+      in_data  : in  std_logic_vector(DATA_BITS_WIDTH-1 downto 0);
+      in_valid : in  std_logic;
+      in_ready : out std_logic;
+      out_tx : out std_logic
+    );
+  end component static_uart_tx;
+end package; -- static_uart_tx_pkg
+
+
+--------------------------------------------------------------------------------
+-- Architecture Definition (rtl)
+--------------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_misc.all;
