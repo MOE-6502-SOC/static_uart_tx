@@ -1,0 +1,9 @@
+package:
+  name: <github matching component name> 
+  authors: ["Who are you?"]
+
+sources: # At the very least, one vhdl source file should be provided
+  - src/<github matching component name>.vhd
+
+# See Bender's github page for more info on what else to put in 
+# here: https://github.com/pulp-platform/bender
