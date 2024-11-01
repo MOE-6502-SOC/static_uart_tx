@@ -26,12 +26,11 @@ use ieee.std_logic_1164.all;
 entity static_uart_tx is
   generic
   (
-    SYS_CLK_MHZ : real range 0.0 to real'high := 125.0; -- System Clock Frequency in MHz
+    SYS_CLK_HZ : natural := 125_000_000; -- System Clock Frequency in MHz
     -- UART Classification
-    BAUD_RATE 	: integer; -- in bps (uart baud is 1 bit)
+    BAUD_RATE 	      : integer; -- in bps (uart baud is 1 bit)
     DATA_BITS_WIDTH 	: integer range 5 to 9 := 8;
-    PARITY_BITS_WIDTH : integer range 0 to 1 := 0;
-    PARITY_TYPE : string := "even"; -- "even" or "odd"
+    PARITY_MODE       : string := "none"; -- "even", "odd", or "none"
     STOP_BITS_WIDTH   : integer range 1 to 2 := 1
   );
   port
@@ -58,12 +57,11 @@ package static_uart_tx_pkg is
   component static_uart_tx is
     generic
     (
-      SYS_CLK_MHZ : real range 0.0 to real'high;
-      BAUD_RATE 	: integer;
-      DATA_BITS_WIDTH 	: integer range 5 to 9;
-      PARITY_BITS_WIDTH : integer range 0 to 1;
-      PARITY_TYPE : string;
-      STOP_BITS_WIDTH   : integer range 1 to 2
+      SYS_CLK_MHZ : real range 0.0 to real'high := 125.0;
+      BAUD_RATE 	      : integer;
+      DATA_BITS_WIDTH 	: integer range 5 to 9 := 8;
+      PARITY_MODE       : string := "none";
+      STOP_BITS_WIDTH   : integer range 1 to 2 := 1
     );
     port
     (
@@ -89,32 +87,50 @@ use ieee.numeric_std.all;
 
 architecture rtl of static_uart_tx is
 
-  ---- Constants
+  ------------------------------------------------------------------------------
+  -- Constant Calculation Functions
+  ------------------------------------------------------------------------------
+  function PARITY_BITS_WIDTH return integer is
+  begin
+    if PARITY_MODE = "none" then
+      return 0;
+    else
+      return 1;
+    end if;
+  end function;
+
+  ------------------------------------------------------------------------------
+  -- Constants
+  ------------------------------------------------------------------------------
   -- Width of data to be serialized on the wire
   constant OUT_DATA_WIDTH     : integer := DATA_BITS_WIDTH + PARITY_BITS_WIDTH + STOP_BITS_WIDTH + 1; -- add 1 for start_bit
   -- Calculations for baud counter
-  constant SYS_CLK_HZ 				: real := SYS_CLK_MHZ * 1.0E6;
-  constant BAUD_RATE_DIVISOR  : real := round(SYS_CLK_HZ/real(BAUD_RATE));
-  constant BAUD_CLK_HZ				: real := SYS_CLK_HZ/BAUD_RATE_DIVISOR;
+  constant BAUD_RATE_DIVISOR  : real := round(real(SYS_CLK_HZ)/real(BAUD_RATE));
+  constant BAUD_CLK_HZ				: real := real(SYS_CLK_HZ)/BAUD_RATE_DIVISOR;
   constant BAUD_COUNTER_WIDTH : integer := integer(ceil(log2(BAUD_RATE_DIVISOR)));
   constant BAUD_PERCENT_DIF   : real := (BAUD_CLK_HZ - real(BAUD_RATE))/real(BAUD_RATE);
 
-  ---- State machine
+  ------------------------------------------------------------------------------
+  -- State machine
+  ------------------------------------------------------------------------------
   type uart_tx_state_t is (idle_read, uart_write);
   signal uart_tx_state : uart_tx_state_t;
 
-  ---- Signals
-  -- out_data represents a SIPO shift register. Data is shifted
-  -- towards 0, so 0 will be the start bit when loaded, those
-  -- above it will be the data bits, followed by parity, and
-  -- then stop bits.
+  ------------------------------------------------------------------------------
+  -- Signals
+  ------------------------------------------------------------------------------
+  -- `out_data` represents a SIPO shift register. Data is shifted towards 0, so 0 will be the start bit when loaded, those
+  -- above it will be the data bits, followed by parity, and then stop bits.
   signal out_data : std_logic_vector(OUT_DATA_WIDTH-1 downto 0);
-    alias start_bit  : std_logic 			                       	is out_data(0);
-    alias data_bits  : std_logic_vector(DATA_BITS_WIDTH-1 downto 0) is out_data(DATA_BITS_WIDTH downto 1);
-    -- Aliases after this point must be carefully handled as parity_bit is
-    -- defined using a generic that could be 0.
-    alias parity_bit : std_logic                              is out_data(DATA_BITS_WIDTH+PARITY_BITS_WIDTH);
-    alias stop_bits  : std_logic_vector(STOP_BITS_WIDTH-1 downto 0) is out_data(DATA_BITS_WIDTH+PARITY_BITS_WIDTH+STOP_BITS_WIDTH downto DATA_BITS_WIDTH+PARITY_BITS_WIDTH+1);
+    alias start_bit  : std_logic
+                       is out_data(0);
+    alias data_bits  : std_logic_vector(DATA_BITS_WIDTH-1 downto 0)
+                       is out_data(DATA_BITS_WIDTH downto 1);
+    -- Aliases after this point must be used carefully as `parity_bit` is defined using a generic that could be 0.
+    alias parity_bit : std_logic
+                       is out_data(DATA_BITS_WIDTH+PARITY_BITS_WIDTH);
+    alias stop_bits  : std_logic_vector(STOP_BITS_WIDTH-1 downto 0)
+                       is out_data(DATA_BITS_WIDTH+PARITY_BITS_WIDTH+STOP_BITS_WIDTH downto DATA_BITS_WIDTH+PARITY_BITS_WIDTH+1);
 
   -- Clock enable pulse for baud rate output
   signal baud_clk_en : std_logic;
@@ -127,20 +143,26 @@ begin
     -- while preventing simulators from constant running of contained statements each
     -- delta cycle.
   begin
-    assert SYS_CLK_HZ >= real(BAUD_RATE) report
+    assert real(SYS_CLK_HZ) >= real(BAUD_RATE) report
         "The system clock frequency must be greater than the baud rate for baud "
         & "rate generation to work."
-        severity failure;
+        severity error;
 
-    -- If the system clock frequncy is not twice the baud rate, one extra stop
-    -- bit will be sent after each transaction before the start of new data.
-    assert SYS_CLK_HZ >= 2.0*real(BAUD_RATE) report
+
+    assert PARITY_MODE = "even" or PARITY_MODE = "odd" or PARITY_MODE = "none" report
+        "Unknown PARITY_MODE: '" & PARITY_MODE & "'."
+        severity error;
+
+    -- If the system clock frequncy is not twice the baud rate, one extra stop bit will be sent after each transaction
+    -- before the start of new data. This is due to the extra clock cycle it takes for a ready-valid transaction to take
+    -- place.
+    assert real(SYS_CLK_HZ) >= 2.0*real(BAUD_RATE) report
         "The system clock frequency is not at least double the baud rate. This will "
         & "cause an extra stop bit to be sent after each transaction."
         severity warning;
 
     -- Alert the user of large counter for baud rate generation
-    assert BAUD_COUNTER_WIDTH <= 32 report
+    assert BAUD_COUNTER_WIDTH <= 16 report
       "A " & integer'image(BAUD_COUNTER_WIDTH) & " bit counter is necessary to implement a divisior of "
       & real'image(BAUD_RATE_DIVISOR) & ". Are your design parameters correct?"
       severity warning;
@@ -148,7 +170,7 @@ begin
     -- Ensure the baud rate is within 2% of expected
     assert BAUD_PERCENT_DIF*sign(BAUD_PERCENT_DIF) < 0.02 report
       "The generated baud rate diverges " & real'image(BAUD_PERCENT_DIF*100.0) & "% from the expected baud rate. "
-      & "Actual: " & real'image(BAUD_CLK_HZ) & ";  Expected: " & integer'image(BAUD_RATE) & "."
+      & "Actual: " & real'image(BAUD_CLK_HZ) & ";  Expected: " & real'image(real(BAUD_RATE)) & "."
       severity warning;
 
     wait; -- wait forever
@@ -163,7 +185,7 @@ begin
     baud_clk_en_proc: process(clk) is
     begin
       if rising_edge(clk) then
-        -- pulse signals
+        -- Clear pulsed ignals
         baud_clk_en <= '0';
 
         if reset = '1' then
@@ -172,7 +194,7 @@ begin
           -- Generate a clock enable pulse, baud_clk_en, which asserts at (System Clock)/(Baud Rate Divisior) frequency.
           if(unsigned(baud_clk_counter) = to_unsigned(integer(BAUD_RATE_DIVISOR)-1, baud_clk_counter'length)) then
             baud_clk_counter <= (others => '0');
-            baud_clk_en <= '1'; -- pulsed signal
+            baud_clk_en <= '1'; -- pulsed
           else
             baud_clk_counter <= std_logic_vector(unsigned(baud_clk_counter) + 1);
           end if;
@@ -234,13 +256,12 @@ begin
               -- Parity bit generation conditional on generic
               if PARITY_BITS_WIDTH > 0 then
                 parity_tmp := xor_reduce(in_data);
-                if PARITY_TYPE = "even" then
+                if PARITY_MODE = "even" then
                   parity_bit <= parity_tmp;
-                elsif PARITY_TYPE = "odd" then
+                elsif PARITY_MODE = "odd" then
                   parity_bit <= not parity_tmp;
-                else
-                  report "Unknown PARITY_TYPE: " & PARITY_TYPE & "."
-                  severity failure;
+                elsif PARITY_MODE = "none" then
+                  null;
                 end if;
               end if;
 

@@ -1,0 +1,13 @@
+# Ignore executables generated for simulation
+test/*
+!test/*.*
+!test/Makefile
+# Ignore other files generated during simulation
+test/**/*.o
+test/**/*.cf
+test/**/*.ghw
+test/**/*.gtkw
+test/**/results.xml
+test/**/__pycache__
+# Ignore bender build files
+.bender

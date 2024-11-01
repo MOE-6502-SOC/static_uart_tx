@@ -15,7 +15,7 @@
 ################################################################################
 
 package:
-  name: <static_uart_tx>
+  name: static_uart_tx
   authors: ["Mac Edmondson"]
 
 sources:
