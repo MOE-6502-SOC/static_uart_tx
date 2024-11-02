@@ -11,3 +11,5 @@ test/**/results.xml
 test/**/__pycache__
 # Ignore bender build files
 .bender
+# This isn't a top-level component, ignore Bender lock files
+Bender.lock
