@@ -1,17 +1,18 @@
 # Makefile
+# TODO: Delete me, this file is no longer useful
 
 # defaults
-SIM ?= ghdl 
+SIM ?= ghdl
 TOPLEVEL_LANG ?= vhdl
 
 VHDL_SOURCES := $(shell /usr/bin/bender script flist)
 $(info VHDL_SOURCES is "$(VHDL_SOURCES)")
 
 # TOPLEVEL is the name of the toplevel module in your Verilog or VHDL file
-TOPLEVEL = static_uart_tx 
+TOPLEVEL = static_uart_tx
 
 # MODULE is the basename of the Python test file
-MODULE = my_test 
+MODULE = my_test
 
 SIM_ARGS = -gBAUD_RATE=115200
 ifeq ($(WAVE), 1)

@@ -1,6 +1,5 @@
 import os
 import subprocess
-from pathlib import Path
 from math import log2
 
 import cocotb
@@ -11,7 +10,20 @@ import cocotb.triggers
 import pytest
 
 
-def test_normal_operation():
+def generate_generics_args_ghdl(generics: dict[str, any]) -> list[str]:
+    """
+    Helper function to set generic arguments for GHDL
+    """
+    ghdl_generic_argument_list = []
+    for generic, value in generics.items():
+        ghdl_generic_argument_list.append(f"-g{generic}={value}")
+    return ghdl_generic_argument_list
+
+
+def test_normal_operation_runner():
+    """
+    Normal operation tests, runner
+    """
     sim = os.getenv("SIM", "ghdl")
 
     # Gather sources from bender
@@ -30,16 +42,25 @@ def test_normal_operation():
         hdl_toplevel=hdl_toplevel,
     )
 
-    # TODO: Implement the generic tests through pytest parametrize (this will involve making a little function too)
-    test_args = ["-gBAUD_RATE=115200"]
-    if os.getenv("WAVE") == 1:
-        test_args.extend(["--wave", f"{runner.build_dir}/wave.ghw"])
+    generics = {
+        "SYS_CLK_HZ": 125_000_000,
+        "BAUD_RATE": 115200,
+        "DATA_BITS_WIDTH": 5,
+        "PARITY_MODE": "odd",
+        "STOP_BITS_WIDTH": 2,
+    }
+    test_args = []
+    test_args.extend(generate_generics_args_ghdl(generics))
+    if int(os.getenv("WAVE", 0)) == 1:
+        test_args.extend([f"--wave={runner.build_dir}/wave.ghw"])
 
+    generics_env = {key: str(val) for key, val in generics.items()}
     runner.test(
         hdl_toplevel_library="work",
         hdl_toplevel=hdl_toplevel,
-        test_module="my_test",
+        test_module="normal_operation_test",
         plusargs=test_args,
+        extra_env=generics_env,  # Make the test aware of the generics being used
     )
 
 
@@ -50,12 +71,10 @@ Assertion tests
 
 @cocotb.test()
 async def coco_generic_properties_test(dut):
-    try:
-        await cocotb.triggers.Timer(1, units="ns")
-        print("I'm still alive")
-        pass
-    except:
-        print("An exception occured that I was expecting")
+    """
+    'Dumb' cocotb test to allow simulator assertions to fire to then be checked by the assertion test runner
+    """
+    await cocotb.triggers.Timer(1, units="ns")
 
 
 @pytest.mark.parametrize(
@@ -102,10 +121,18 @@ async def coco_generic_properties_test(dut):
             f"A {int(round(log2(125_000_000)))} bit counter is necessary to implement a divisior of 1.25e8. Are your design parameters correct?",
         ),
         # Large difference in actual and expected baud.
-        (25_000_000, 1843200, 8, "none", 1, "warning", "The generated baud rate diverges "),
+        (
+            25_000_000,
+            1843200,
+            8,
+            "none",
+            1,
+            "warning",
+            "The generated baud rate diverges ",
+        ),
     ),
 )
-def test_assertion_failures(
+def test_assertions_runer(
     capfd,
     sys_clk_hz: float,
     baud_rate: int,
@@ -115,6 +142,9 @@ def test_assertion_failures(
     assertion_level: str,
     assertion_message: str,
 ) -> None:
+    """
+    Assertion tests, test runner
+    """
     sim = os.getenv("SIM", "ghdl")
 
     # Gather sources from bender
@@ -141,16 +171,10 @@ def test_assertion_failures(
         "STOP_BITS_WIDTH": stop_bits_width,
     }
 
-    def generate_generics_args_ghdl(generics: dict[str, any]) -> list[str]:
-        ghdl_generic_argument_list = []
-        for generic, value in generics.items():
-            ghdl_generic_argument_list.append(f"-g{generic}={value}")
-        return ghdl_generic_argument_list
-
     test_args = []
     test_args.extend(generate_generics_args_ghdl(generics))
-    if os.getenv("WAVE") == 1:
-        test_args.extend(["--wave", f"{runner.build_dir}/wave.ghw"])
+    if int(os.getenv("WAVE", 0)) == 1:
+        test_args.extend([f"--wave={runner.build_dir}/wave.ghw"])
 
     runner.test(
         hdl_toplevel_library="work",

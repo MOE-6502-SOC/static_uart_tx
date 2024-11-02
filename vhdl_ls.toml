@@ -1,0 +1,4 @@
+[libraries]
+default.files = [
+  'src/*',
+]
