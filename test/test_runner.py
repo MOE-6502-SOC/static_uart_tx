@@ -20,7 +20,18 @@ def generate_generics_args_ghdl(generics: dict[str, any]) -> list[str]:
     return ghdl_generic_argument_list
 
 
-def test_normal_operation_runner():
+# TODO: A lot could of duplicate code could probably be cut down by using a Cocotb runner fixture. Here and in other testbench in the future.
+@pytest.mark.parametrize(
+    ("sys_clk_hz", "baud_rate"),
+    ((125_000_000, 115200), (200_000_000, 100_000_000), (250_000_000, 126_000_000)),
+)
+# TODO: Why isn't the less than double baud clock case failing for 1 stop bit? Evaluate and fix in documentation or code or both.
+@pytest.mark.parametrize("data_bits_width", (5, 6, 7, 8, 9))
+@pytest.mark.parametrize("parity_mode", ("none", "even", "odd"))
+@pytest.mark.parametrize("stop_bits_width", (1, 2))
+def test_normal_operation_runner(
+    worker_id, sys_clk_hz, baud_rate, data_bits_width, parity_mode, stop_bits_width
+):
     """
     Normal operation tests, runner
     """
@@ -40,14 +51,15 @@ def test_normal_operation_runner():
         hdl_library="work",
         sources=sources,
         hdl_toplevel=hdl_toplevel,
+        build_dir=f"sim_build/sim_build_{stop_bits_width}_{parity_mode}_{data_bits_width}_{sys_clk_hz}_{baud_rate}",
     )
 
     generics = {
-        "SYS_CLK_HZ": 125_000_000,
-        "BAUD_RATE": 115200,
-        "DATA_BITS_WIDTH": 5,
-        "PARITY_MODE": "odd",
-        "STOP_BITS_WIDTH": 2,
+        "SYS_CLK_HZ": sys_clk_hz,
+        "BAUD_RATE": baud_rate,
+        "DATA_BITS_WIDTH": data_bits_width,
+        "PARITY_MODE": parity_mode,
+        "STOP_BITS_WIDTH": stop_bits_width,
     }
     test_args = []
     test_args.extend(generate_generics_args_ghdl(generics))
