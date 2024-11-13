@@ -156,10 +156,10 @@ begin
     -- If the system clock frequncy is not twice the baud rate, one extra stop bit will be sent after each transaction
     -- before the start of new data. This is due to the extra clock cycle it takes for a ready-valid transaction to take
     -- place.
-    assert real(SYS_CLK_HZ) >= 2.0*real(BAUD_RATE) report
+    assert not (real(SYS_CLK_HZ) < 2.0*real(BAUD_RATE) and STOP_BITS_WIDTH = 1) report
         "The system clock frequency is not at least double the baud rate. This will "
         & "cause an extra stop bit to be sent after each transaction."
-        severity warning;
+        severity error;
 
     -- Alert the user of large counter for baud rate generation
     assert BAUD_COUNTER_WIDTH <= 16 report

@@ -20,21 +20,16 @@ def generate_generics_args_ghdl(generics: dict[str, any]) -> list[str]:
     return ghdl_generic_argument_list
 
 
-# TODO: A lot could of duplicate code could probably be cut down by using a Cocotb runner fixture. Here and in other testbench in the future.
-@pytest.mark.parametrize(
-    ("sys_clk_hz", "baud_rate"),
-    ((125_000_000, 115200), (200_000_000, 100_000_000), (250_000_000, 126_000_000)),
-)
-# TODO: Why isn't the less than double baud clock case failing for 1 stop bit? Evaluate and fix in documentation or code or both.
-@pytest.mark.parametrize("data_bits_width", (5, 6, 7, 8, 9))
-@pytest.mark.parametrize("parity_mode", ("none", "even", "odd"))
-@pytest.mark.parametrize("stop_bits_width", (1, 2))
-def test_normal_operation_runner(
-    worker_id, sys_clk_hz, baud_rate, data_bits_width, parity_mode, stop_bits_width
-):
-    """
-    Normal operation tests, runner
-    """
+"""
+Globals for all tests and fixtures
+"""
+# The top level is our UUT
+hdl_toplevel = "static_uart_tx"
+
+
+@pytest.fixture
+def runner(sys_clk_hz, baud_rate, data_bits_width, parity_mode, stop_bits_width):
+    # Get the simulator
     sim = os.getenv("SIM", "ghdl")
 
     # Gather sources from bender
@@ -44,8 +39,7 @@ def test_normal_operation_runner(
         stdout=subprocess.PIPE,
     ).stdout.split()
 
-    hdl_toplevel = "static_uart_tx"
-
+    # Create a runner and build the sources
     runner = get_runner(sim)
     runner.build(
         hdl_library="work",
@@ -53,6 +47,27 @@ def test_normal_operation_runner(
         hdl_toplevel=hdl_toplevel,
         build_dir=f"sim_build/sim_build_{stop_bits_width}_{parity_mode}_{data_bits_width}_{sys_clk_hz}_{baud_rate}",
     )
+    return runner
+
+
+@pytest.mark.parametrize(
+    ("sys_clk_hz", "baud_rate"),
+    ((125_000_000, 115200), (200_000_000, 100_000_000), (250_000_000, 126_000_000)),
+)
+@pytest.mark.parametrize("data_bits_width", (5, 6, 7, 8, 9))
+@pytest.mark.parametrize("parity_mode", ("none", "even", "odd"))
+@pytest.mark.parametrize("stop_bits_width", (1, 2))
+def test_normal_operation_runner(
+    capfd, runner, sys_clk_hz, baud_rate, data_bits_width, parity_mode, stop_bits_width
+):
+    """
+    Normal operation tests, runner
+    """
+    # Account for a few expected failure conditions
+    if (baud_rate * 2 > sys_clk_hz) and stop_bits_width < 2:
+        pytest.xfail(
+            reason="One stop bit with a baud rate less than double the base clock isn't allowed."
+        )
 
     generics = {
         "SYS_CLK_HZ": sys_clk_hz,
@@ -74,6 +89,15 @@ def test_normal_operation_runner(
         plusargs=test_args,
         extra_env=generics_env,  # Make the test aware of the generics being used
     )
+
+    # Ensure there were no error level assertions for the test
+    captured_output = capfd.readouterr()
+    if "(assertion error):" in captured_output.out:
+        print("\nSTDOUT CAPTURED:")
+        print(captured_output.out)
+        print("\nSTDERR CAPTRUED:")
+        print(captured_output.err)
+        assert False, "An `error` assertion was seen in this test."
 
 
 """
@@ -119,7 +143,7 @@ async def coco_generic_properties_test(dut):
             8,
             "none",
             1,
-            "warning",
+            "error",
             "The system clock frequency is not at least double the baud rate. This will cause an extra stop bit to be sent after each transaction.",
         ),
         # Large baud rate generator counter.
@@ -144,8 +168,9 @@ async def coco_generic_properties_test(dut):
         ),
     ),
 )
-def test_assertions_runer(
+def test_assertions_runner(
     capfd,
+    runner,
     sys_clk_hz: float,
     baud_rate: int,
     data_bits_width: int,
@@ -157,24 +182,6 @@ def test_assertions_runer(
     """
     Assertion tests, test runner
     """
-    sim = os.getenv("SIM", "ghdl")
-
-    # Gather sources from bender
-    sources = subprocess.run(
-        ["bender", "script", "flist", "-t", "simulation"],
-        text=True,
-        stdout=subprocess.PIPE,
-    ).stdout.split()
-
-    hdl_toplevel = "static_uart_tx"
-
-    runner = get_runner(sim)
-    runner.build(
-        hdl_library="work",
-        sources=sources,
-        hdl_toplevel=hdl_toplevel,
-    )
-
     generics = {
         "SYS_CLK_HZ": sys_clk_hz,
         "BAUD_RATE": baud_rate,
@@ -195,6 +202,7 @@ def test_assertions_runer(
         testcase="coco_generic_properties_test",
         plusargs=test_args,
     )
+
     # Ensure the assertion at the expected level fired, which is logged by the simulator at the file descriptor stdout level
     captured_output = capfd.readouterr()
     if f"(assertion {assertion_level}): {assertion_message}" not in captured_output.out:
